@@ -93,6 +93,30 @@ The application automatically creates an SQLite database (`academic_system.db`) 
 4. Press Enter or click "Search" to find matching students
 5. Results show student names and email addresses (passwords are not displayed for security)
 
+### Secretary Functions (Fully Implemented)
+1. **Process Enrollments**: 
+   - Select a student and enroll them in multiple courses
+   - View current enrollments for each student
+   - Prevent duplicate enrollments
+2. **Generate Student Reports**:
+   - Create enrollment reports, academic performance reports, contact lists, or complete summaries
+   - Export reports to CSV files or display in-window
+   - Multiple report formats available
+
+### Course Content Management (Teachers)
+1. **Create Assignment**:
+   - Create assignments with title, description, due date, and point values
+   - Select assignment types (homework, quiz, project, exam)
+   - Assignments are stored in the database
+2. **Course Materials**:
+   - Manage syllabus, lessons, and resources
+   - Tabbed interface for different content types
+   - Add custom lessons and course materials
+3. **View Submissions**:
+   - View student submissions for assignments
+   - Grade submissions with numerical scores and feedback
+   - Track submission status (submitted, missing, graded)
+
 ## File Structure
 
 ```
@@ -114,11 +138,11 @@ tkintertest/
 3. **Student List Refresh**: Teachers can now refresh student lists to see newly registered students
 4. **Show All Students Feature**: Teachers can view all students regardless of course enrollment status
 5. **Fixed Search Function**: Student search now works properly and doesn't expose password information
-6. **Real-time Database Updates**: All student lists now properly reflect database changes
-7. **Enhanced Secretary Features**: Added "View All Students" and "Manage Student Records" functionality
-8. **Assignment Loading**: Student dashboard now loads actual assignments from the database
-9. **Improved Error Handling**: Better validation and user feedback throughout the application
-10. **Fixed Key Bindings**: Enter key now works correctly in different contexts (login vs. search)
+6. **Secretary Functions Implemented**: All placeholder functions now have full implementations
+7. **Course Content Management**: Teachers can create assignments, manage materials, and grade submissions
+8. **Student Reports System**: Generate and export comprehensive student reports
+9. **Enrollment Management**: Process student course enrollments with validation
+10. **Enhanced UI**: Improved button layouts and window designs throughout the application
 
 ## Key Implementation Details
 
