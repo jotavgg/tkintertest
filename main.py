@@ -216,9 +216,9 @@ def insert_sample_data(cursor):
     
     # Sample courses
     courses_data = [
-        ('Mathematics I', 1),
-        ('Programming Fundamentals', 1),
-        ('Data Structures', 1),
+        ('Matemática I', 1),
+        ('Fundamentos de Programação', 1),
+        ('Estruturas de Dados', 1),
     ]
     
     cursor.executemany('''
@@ -565,19 +565,19 @@ class TeacherFrame(tk.Frame):
         
         # Create grade entry window
         grade_window = tk.Toplevel(self.controller)
-        grade_window.title("Enter Grade")
+        grade_window.title("Inserir Nota")
         grade_window.geometry("300x200")
         grade_window.transient(self.controller)
         grade_window.grab_set()
         
-        tk.Label(grade_window, text=f"Student: {student_data[1]}", 
+        tk.Label(grade_window, text=f"Estudante: {student_data[1]}", 
                 font=("Arial", 12, "bold")).pack(pady=10)
         
-        tk.Label(grade_window, text="Grade (0-100):").pack()
+        tk.Label(grade_window, text="Nota (0-100):").pack()
         grade_entry = tk.Entry(grade_window)
         grade_entry.pack(pady=5)
         
-        tk.Label(grade_window, text="Assignment:").pack()
+        tk.Label(grade_window, text="Atividade:").pack()
         assignment_entry = tk.Entry(grade_window)
         assignment_entry.pack(pady=5)
         
@@ -600,21 +600,21 @@ class TeacherFrame(tk.Frame):
             except ValueError:
                 messagebox.showerror("Erro", "Por favor, insira uma nota numérica válida.")
         
-        tk.Button(grade_window, text="Save Grade", command=save_grade,
+        tk.Button(grade_window, text="Salvar Nota", command=save_grade,
                  bg="#4CAF50", fg="white").pack(pady=20)
     
     def search_students(self):
         """Open student search dialog."""
         search_window = tk.Toplevel(self.controller)
-        search_window.title("Search Students")
+        search_window.title("Buscar Estudantes")
         search_window.geometry("400x300")
         search_window.transient(self.controller)
         search_window.grab_set()
         
-        tk.Label(search_window, text="Search Students", 
+        tk.Label(search_window, text="Buscar Estudantes", 
                 font=("Arial", 14, "bold")).pack(pady=10)
         
-        tk.Label(search_window, text="Enter student name:").pack()
+        tk.Label(search_window, text="Digite o nome do estudante:").pack()
         search_entry = tk.Entry(search_window, font=("Arial", 12))
         search_entry.pack(pady=5)
         
@@ -642,7 +642,7 @@ class TeacherFrame(tk.Frame):
                 for student in results:
                     results_text.insert(tk.END, f"{student[0]} {student[1]} - {student[2]}\n")
             else:
-                results_text.insert(tk.END, "No students found.")
+                results_text.insert(tk.END, "Nenhum estudante encontrado.")
         
         # Bind Enter key to search in this window
         search_entry.bind('<Return>', lambda e: perform_search())
@@ -651,7 +651,7 @@ class TeacherFrame(tk.Frame):
         button_frame = tk.Frame(search_window)
         button_frame.pack(pady=10)
         
-        tk.Button(button_frame, text="Search", command=perform_search,
+        tk.Button(button_frame, text="Buscar", command=perform_search,
                  bg="#2196F3", fg="white", font=("Arial", 11), 
                  width=15, height=2).pack(side="left", padx=5)
         
@@ -688,13 +688,13 @@ class TeacherFrame(tk.Frame):
         conn.close()
         
         if at_risk_students:
-            message = "At-Risk Students (Average < 6.0):\n\n"
+            message = "Estudantes em Risco (Média < 6.0):\n\n"
             for student in at_risk_students:
-                message += f"• {student[0]} - Average: {student[1]:.1f}\n"
+                message += f"• {student[0]} - Média: {student[1]:.1f}\n"
         else:
-            message = "No at-risk students found in this course."
+            message = "Nenhum estudante em risco encontrado nesta disciplina."
         
-        messagebox.showinfo("At-Risk Students", message)
+        messagebox.showinfo("Estudantes em Risco", message)
     
     def create_assignment(self):
         """Criar uma nova atividade para o curso selecionado."""
@@ -995,12 +995,12 @@ class TeacherFrame(tk.Frame):
         course_name = selection.split(" (ID:")[0]
         
         materials_window = tk.Toplevel(self.controller)
-        materials_window.title(f"Course Materials - {course_name}")
+        materials_window.title(f"Materiais da Disciplina - {course_name}")
         materials_window.geometry("600x500")
         materials_window.transient(self.controller)
         materials_window.grab_set()
         
-        tk.Label(materials_window, text=f"Course Materials for {course_name}", 
+        tk.Label(materials_window, text=f"Materiais da Disciplina para {course_name}", 
                 font=("Arial", 14, "bold")).pack(pady=10)
         
         # Notebook for different types of content
@@ -1009,49 +1009,49 @@ class TeacherFrame(tk.Frame):
         
         # Syllabus tab
         syllabus_frame = tk.Frame(notebook)
-        notebook.add(syllabus_frame, text="Syllabus")
+        notebook.add(syllabus_frame, text="Ementa")
         
-        tk.Label(syllabus_frame, text="Course Syllabus", font=("Arial", 12, "bold")).pack(pady=5)
+        tk.Label(syllabus_frame, text="Ementa do Curso", font=("Arial", 12, "bold")).pack(pady=5)
         syllabus_text = tk.Text(syllabus_frame, height=15, font=("Arial", 10))
         syllabus_text.pack(fill="both", expand=True, padx=10, pady=5)
         
         # Load existing syllabus or add sample content
-        sample_syllabus = f"""Course: {course_name}
+        sample_syllabus = f"""Disciplina: {course_name}
         
-Course Description:
-This course covers fundamental concepts and practical applications in the subject area.
+Descrição da Disciplina:
+Esta disciplina abrange conceitos fundamentais e aplicações práticas na área de estudo.
 
-Learning Objectives:
-- Understand core principles and theories
-- Apply knowledge to solve real-world problems
-- Develop critical thinking and analytical skills
-- Work effectively in teams and individually
+Objetivos de Aprendizagem:
+- Compreender princípios e teorias fundamentais
+- Aplicar conhecimento para resolver problemas do mundo real
+- Desenvolver pensamento crítico e habilidades analíticas
+- Trabalhar efetivamente em equipes e individualmente
 
-Assessment:
-- Assignments: 40%
+Avaliação:
+- Atividades: 40%
 - Quizzes: 20%
-- Midterm Exam: 20%
-- Final Project: 20%
+- Prova Intermediária: 20%
+- Projeto Final: 20%
 
-Required Materials:
-- Textbook: [To be announced]
-- Online resources and readings
-- Calculator (if applicable)
+Materiais Necessários:
+- Livro-texto: [A ser anunciado]
+- Recursos online e leituras
+- Calculadora (se aplicável)
 
-Course Schedule:
-Week 1-2: Introduction and Fundamentals
-Week 3-4: Core Concepts
-Week 5-6: Applications
-Week 7-8: Advanced Topics
-Week 9-10: Review and Assessment
+Cronograma do Curso:
+Semana 1-2: Introdução e Fundamentos
+Semana 3-4: Conceitos Centrais
+Semana 5-6: Aplicações
+Semana 7-8: Tópicos Avançados
+Semana 9-10: Revisão e Avaliação
 """
         syllabus_text.insert(1.0, sample_syllabus)
         
         # Lessons tab
         lessons_frame = tk.Frame(notebook)
-        notebook.add(lessons_frame, text="Lessons")
+        notebook.add(lessons_frame, text="Aulas")
         
-        tk.Label(lessons_frame, text="Course Lessons", font=("Arial", 12, "bold")).pack(pady=5)
+        tk.Label(lessons_frame, text="Aulas do Curso", font=("Arial", 12, "bold")).pack(pady=5)
         
         lessons_list_frame = tk.Frame(lessons_frame)
         lessons_list_frame.pack(fill="both", expand=True, padx=10, pady=5)
@@ -1065,14 +1065,14 @@ Week 9-10: Review and Assessment
         
         # Sample lessons
         sample_lessons = [
-            "Lesson 1: Introduction to the Subject",
-            "Lesson 2: Basic Principles and Concepts",
-            "Lesson 3: Practical Applications",
-            "Lesson 4: Problem-Solving Techniques",
-            "Lesson 5: Case Studies and Examples",
-            "Lesson 6: Advanced Topics Overview",
-            "Lesson 7: Review and Practice",
-            "Lesson 8: Final Assessment Preparation"
+            "Aula 1: Introdução ao Assunto",
+            "Aula 2: Princípios e Conceitos Básicos",
+            "Aula 3: Aplicações Práticas",
+            "Aula 4: Técnicas de Resolução de Problemas",
+            "Aula 5: Estudos de Caso e Exemplos",
+            "Aula 6: Visão Geral de Tópicos Avançados",
+            "Aula 7: Revisão e Prática",
+            "Aula 8: Preparação para Avaliação Final"
         ]
         
         for lesson in sample_lessons:
@@ -1081,38 +1081,38 @@ Week 9-10: Review and Assessment
         lesson_buttons = tk.Frame(lessons_frame)
         lesson_buttons.pack(pady=5)
         
-        tk.Button(lesson_buttons, text="Add Lesson", bg="#4CAF50", fg="white",
+        tk.Button(lesson_buttons, text="Adicionar Aula", bg="#4CAF50", fg="white",
                  command=lambda: self.add_lesson_dialog(lessons_listbox)).pack(side="left", padx=5)
         
         # Resources tab
         resources_frame = tk.Frame(notebook)
-        notebook.add(resources_frame, text="Resources")
+        notebook.add(resources_frame, text="Recursos")
         
-        tk.Label(resources_frame, text="Course Resources", font=("Arial", 12, "bold")).pack(pady=5)
+        tk.Label(resources_frame, text="Recursos do Curso", font=("Arial", 12, "bold")).pack(pady=5)
         resources_text = tk.Text(resources_frame, height=15, font=("Arial", 10))
         resources_text.pack(fill="both", expand=True, padx=10, pady=5)
         
-        sample_resources = """Online Resources:
-• Course Website: [URL]
-• Online Library: [URL]
-• Video Lectures: [URL]
-• Practice Exercises: [URL]
+        sample_resources = """Recursos Online:
+• Site do Curso: [URL]
+• Biblioteca Online: [URL]
+• Vídeo Aulas: [URL]
+• Exercícios Práticos: [URL]
 
-Recommended Reading:
-• Primary Textbook: [Title and Author]
-• Supplementary Materials: [List]
-• Research Papers: [References]
+Leitura Recomendada:
+• Livro-texto Principal: [Título e Autor]
+• Materiais Complementares: [Lista]
+• Artigos de Pesquisa: [Referências]
 
-Tools and Software:
-• Required Software: [List]
-• Online Platforms: [List]
-• Mobile Apps: [List]
+Ferramentas e Software:
+• Software Necessário: [Lista]
+• Plataformas Online: [Lista]
+• Aplicativos Móveis: [Lista]
 
-Support:
-• Office Hours: [Schedule]
-• Teaching Assistant: [Contact]
-• Study Groups: [Information]
-• Online Forum: [URL]
+Suporte:
+• Horário de Atendimento: [Horários]
+• Monitor da Disciplina: [Contato]
+• Grupos de Estudo: [Informações]
+• Fórum Online: [URL]
 """
         resources_text.insert(1.0, sample_resources)
         
@@ -1124,7 +1124,7 @@ Support:
         button_frame = tk.Frame(materials_window)
         button_frame.pack(pady=10)
         
-        tk.Button(button_frame, text="Save Materials", command=save_materials,
+        tk.Button(button_frame, text="Salvar Materiais", command=save_materials,
                  bg="#4CAF50", fg="white", font=("Arial", 11), width=15).pack(side="left", padx=5)
         
         tk.Button(button_frame, text="Fechar", command=materials_window.destroy,
@@ -1200,12 +1200,12 @@ Support:
             assignment_combo['values'] = ["No assignments found"]
         
         # Submissions display
-        submissions_frame = tk.LabelFrame(submissions_window, text="Submissions", 
+        submissions_frame = tk.LabelFrame(submissions_window, text="Entregas", 
                                         font=("Arial", 12, "bold"))
         submissions_frame.pack(fill="both", expand=True, padx=20, pady=10)
         
         # Create Treeview for submissions
-        columns = ("Student", "Submission Date", "Grade", "Status")
+        columns = ("Estudante", "Data de Entrega", "Nota", "Status")
         submissions_tree = ttk.Treeview(submissions_frame, columns=columns, show="headings", height=15)
         
         for col in columns:
@@ -2437,7 +2437,7 @@ class SecretaryFrame(tk.Frame):
         register_window.transient(self.controller)
         register_window.grab_set()
         
-        tk.Label(register_window, text="Register New Student", 
+        tk.Label(register_window, text="Registrar Novo Estudante", 
                 font=("Arial", 14, "bold")).pack(pady=20)
         
         # Form fields
@@ -2449,11 +2449,11 @@ class SecretaryFrame(tk.Frame):
         last_name_entry = tk.Entry(register_window, font=("Arial", 11), width=30)
         last_name_entry.pack(pady=5)
         
-        tk.Label(register_window, text="Username:").pack()
+        tk.Label(register_window, text="Nome de Usuário:").pack()
         username_entry = tk.Entry(register_window, font=("Arial", 11), width=30)
         username_entry.pack(pady=5)
         
-        tk.Label(register_window, text="Password:").pack()
+        tk.Label(register_window, text="Senha:").pack()
         password_entry = tk.Entry(register_window, font=("Arial", 11), width=30, show="*")
         password_entry.pack(pady=5)
         
@@ -2462,7 +2462,7 @@ class SecretaryFrame(tk.Frame):
         email_entry.pack(pady=5)
         
         # Course selection
-        tk.Label(register_window, text="Enroll in Courses (optional):").pack(pady=(10, 5))
+        tk.Label(register_window, text="Matricular em Disciplinas (opcional):").pack(pady=(10, 5))
         
         # Create frame for course checkboxes
         courses_frame = tk.Frame(register_window)
@@ -2483,7 +2483,7 @@ class SecretaryFrame(tk.Frame):
                 course_vars[course_id] = var
                 tk.Checkbutton(courses_frame, text=course_name, variable=var).pack(anchor='w')
         else:
-            tk.Label(courses_frame, text="No courses available", fg="gray").pack()
+            tk.Label(courses_frame, text="Nenhuma disciplina disponível", fg="gray").pack()
         
         def submit_registration():
             first_name = first_name_entry.get().strip()
@@ -2493,7 +2493,7 @@ class SecretaryFrame(tk.Frame):
             email = email_entry.get().strip()
             
             if not all([first_name, last_name, username, password, email]):
-                messagebox.showerror("Error", "Please fill in all fields.")
+                messagebox.showerror("Erro", "Por favor, preencha todos os campos.")
                 return
             
             try:
@@ -2506,7 +2506,7 @@ class SecretaryFrame(tk.Frame):
                     if selected_courses:
                         self.enroll_student_in_courses(result['student_id'], selected_courses)
                     
-                    course_info = f"\nEnrolled in {len(selected_courses)} course(s)" if selected_courses else "\nNo course enrollments"
+                    course_info = f"\nMatriculado em {len(selected_courses)} disciplina(s)" if selected_courses else "\nSem matrículas em disciplinas"
                     
                     messagebox.showinfo("Sucesso", 
                                       f"Estudante '{first_name} {last_name}' registrado com sucesso via módulo C!\n"
@@ -2514,12 +2514,12 @@ class SecretaryFrame(tk.Frame):
                                       f"ID do Estudante: {result['student_id']}{course_info}")
                     register_window.destroy()
                 else:
-                    messagebox.showerror("Error", f"C Module Error: {result['error']}")
+                    messagebox.showerror("Erro", f"Erro do Módulo C: {result['error']}")
                     
             except Exception as e:
-                messagebox.showerror("Error", f"Failed to execute C module: {str(e)}")
+                messagebox.showerror("Erro", f"Falha ao executar módulo C: {str(e)}")
         
-        tk.Button(register_window, text="Submit Registration", 
+        tk.Button(register_window, text="Enviar Registro", 
                  command=submit_registration, bg="#4CAF50", fg="white",
                  font=("Arial", 11)).pack(pady=20)
     
@@ -2579,12 +2579,12 @@ class SecretaryFrame(tk.Frame):
     def manage_student_records(self):
         """Open student records management window."""
         records_window = tk.Toplevel(self.controller)
-        records_window.title("Manage Student Records")
+        records_window.title("Gerenciar Registros de Estudantes")
         records_window.geometry("600x400")
         records_window.transient(self.controller)
         records_window.grab_set()
         
-        tk.Label(records_window, text="Student Records Management", 
+        tk.Label(records_window, text="Gerenciamento de Registros de Estudantes", 
                 font=("Arial", 14, "bold")).pack(pady=10)
         
         # Simple student list with basic management
@@ -2592,7 +2592,7 @@ class SecretaryFrame(tk.Frame):
         frame.pack(fill="both", expand=True, padx=20, pady=10)
         
         # Treeview for student records
-        columns = ("ID", "Username", "Name", "Email")
+        columns = ("ID", "Usuário", "Nome", "Email")
         tree = ttk.Treeview(frame, columns=columns, show="headings", height=15)
         
         for col in columns:
@@ -2619,18 +2619,18 @@ class SecretaryFrame(tk.Frame):
         for student in students:
             tree.insert("", "end", values=student)
         
-        tk.Button(records_window, text="Close", command=records_window.destroy,
+        tk.Button(records_window, text="Fechar", command=records_window.destroy,
                  bg="#f44336", fg="white").pack(pady=10)
     
     def view_all_students(self):
         """View all students in the system."""
         students_window = tk.Toplevel(self.controller)
-        students_window.title("All Students")
+        students_window.title("Todos os Estudantes")
         students_window.geometry("700x500")
         students_window.transient(self.controller)
         students_window.grab_set()
         
-        tk.Label(students_window, text="All Registered Students", 
+        tk.Label(students_window, text="Todos os Estudantes Registrados", 
                 font=("Arial", 14, "bold")).pack(pady=10)
         
         # Create frame for the treeview
@@ -2675,7 +2675,7 @@ class SecretaryFrame(tk.Frame):
         conn.close()
         
         for student in students:
-            courses = student[5] if student[5] else "No enrollments"
+            courses = student[5] if student[5] else "Sem matrículas"
             tree.insert("", "end", values=(
                 student[0], student[1], student[2], student[3], student[4], courses
             ))
@@ -2684,10 +2684,10 @@ class SecretaryFrame(tk.Frame):
         button_frame = tk.Frame(students_window)
         button_frame.pack(pady=10)
         
-        tk.Button(button_frame, text="Refresh", command=lambda: self.refresh_student_list(tree),
+        tk.Button(button_frame, text="Atualizar", command=lambda: self.refresh_student_list(tree),
                  bg="#4CAF50", fg="white").pack(side="left", padx=5)
         
-        tk.Button(button_frame, text="Close", command=students_window.destroy,
+        tk.Button(button_frame, text="Fechar", command=students_window.destroy,
                  bg="#f44336", fg="white").pack(side="left", padx=5)
     
     def refresh_student_list(self, tree):
@@ -2715,22 +2715,22 @@ class SecretaryFrame(tk.Frame):
         conn.close()
         
         for student in students:
-            courses = student[5] if student[5] else "No enrollments"
+            courses = student[5] if student[5] else "Sem matrículas"
             tree.insert("", "end", values=(
                 student[0], student[1], student[2], student[3], student[4], courses
             ))
         
-        messagebox.showinfo("Refreshed", "Student list has been refreshed.")
+        messagebox.showinfo("Atualizado", "Lista de estudantes foi atualizada.")
     
     def process_enrollments(self):
         """Process student enrollments in courses."""
         enrollment_window = tk.Toplevel(self.controller)
-        enrollment_window.title("Process Student Enrollments")
+        enrollment_window.title("Processar Matrículas de Estudantes")
         enrollment_window.geometry("600x500")
         enrollment_window.transient(self.controller)
         enrollment_window.grab_set()
         
-        tk.Label(enrollment_window, text="Student Course Enrollments", 
+        tk.Label(enrollment_window, text="Matrículas de Estudantes em Disciplinas", 
                 font=("Arial", 14, "bold")).pack(pady=10)
         
         # Create main frame
@@ -2738,10 +2738,10 @@ class SecretaryFrame(tk.Frame):
         main_frame.pack(fill="both", expand=True, padx=20, pady=10)
         
         # Student selection
-        student_frame = tk.LabelFrame(main_frame, text="Select Student", font=("Arial", 12, "bold"))
+        student_frame = tk.LabelFrame(main_frame, text="Selecionar Estudante", font=("Arial", 12, "bold"))
         student_frame.pack(fill="x", pady=5)
         
-        tk.Label(student_frame, text="Student:").pack(side="left", padx=5)
+        tk.Label(student_frame, text="Estudante:").pack(side="left", padx=5)
         student_combo = ttk.Combobox(student_frame, font=("Arial", 10), state="readonly", width=30)
         student_combo.pack(side="left", padx=5, pady=10)
         
@@ -2759,7 +2759,7 @@ class SecretaryFrame(tk.Frame):
         student_combo['values'] = student_list
         
         # Course selection
-        course_frame = tk.LabelFrame(main_frame, text="Available Courses", font=("Arial", 12, "bold"))
+        course_frame = tk.LabelFrame(main_frame, text="Disciplinas Disponíveis", font=("Arial", 12, "bold"))
         course_frame.pack(fill="both", expand=True, pady=5)
         
         # Create frame for course checkboxes
@@ -2781,7 +2781,7 @@ class SecretaryFrame(tk.Frame):
                           font=("Arial", 10)).pack(anchor='w', pady=2)
         
         # Current enrollments display
-        current_frame = tk.LabelFrame(main_frame, text="Current Enrollments", font=("Arial", 12, "bold"))
+        current_frame = tk.LabelFrame(main_frame, text="Matrículas Atuais", font=("Arial", 12, "bold"))
         current_frame.pack(fill="x", pady=5)
         
         current_text = tk.Text(current_frame, height=4, font=("Arial", 9))
@@ -2808,11 +2808,11 @@ class SecretaryFrame(tk.Frame):
             
             current_text.delete(1.0, tk.END)
             if enrolled_courses:
-                current_text.insert(tk.END, "Currently enrolled in:\n")
+                current_text.insert(tk.END, "Atualmente matriculado em:\n")
                 for course in enrolled_courses:
                     current_text.insert(tk.END, f"• {course[0]}\n")
             else:
-                current_text.insert(tk.END, "Not enrolled in any courses.")
+                current_text.insert(tk.END, "Não matriculado em nenhuma disciplina.")
         
         student_combo.bind('<<ComboboxSelected>>', lambda e: update_current_enrollments())
         
@@ -2820,14 +2820,14 @@ class SecretaryFrame(tk.Frame):
             """Process the enrollment changes."""
             selection = student_combo.get()
             if not selection:
-                messagebox.showerror("Error", "Please select a student.")
+                messagebox.showerror("Erro", "Por favor, selecione um estudante.")
                 return
             
             student_id = int(selection.split("ID: ")[1].rstrip(")"))
             selected_courses = [course_id for course_id, var in course_vars.items() if var.get()]
             
             if not selected_courses:
-                messagebox.showwarning("Aviso", "Por favor, selecione pelo menos um curso.")
+                messagebox.showwarning("Aviso", "Por favor, selecione pelo menos uma disciplina.")
                 return
             
             try:
@@ -2847,7 +2847,7 @@ class SecretaryFrame(tk.Frame):
                 conn.close()
                 
                 messagebox.showinfo("Sucesso", 
-                                  f"Estudante matriculado com sucesso em {enrolled_count} novo(s) curso(s).")
+                                  f"Estudante matriculado com sucesso em {enrolled_count} nova(s) disciplina(s).")
                 update_current_enrollments()
                 
                 # Clear course selections
@@ -2855,42 +2855,42 @@ class SecretaryFrame(tk.Frame):
                     var.set(False)
                     
             except Exception as e:
-                messagebox.showerror("Error", f"Failed to process enrollment: {str(e)}")
+                messagebox.showerror("Erro", f"Falha ao processar matrícula: {str(e)}")
         
         # Buttons
         button_frame = tk.Frame(enrollment_window)
         button_frame.pack(pady=10)
         
-        tk.Button(button_frame, text="Enroll in Selected Courses", 
+        tk.Button(button_frame, text="Matricular em Disciplinas Selecionadas", 
                  command=process_enrollment, bg="#4CAF50", fg="white",
-                 font=("Arial", 11), width=20).pack(side="left", padx=5)
+                 font=("Arial", 11), width=30).pack(side="left", padx=5)
         
-        tk.Button(button_frame, text="Close", command=enrollment_window.destroy,
+        tk.Button(button_frame, text="Fechar", command=enrollment_window.destroy,
                  bg="#f44336", fg="white", font=("Arial", 11), width=15).pack(side="left", padx=5)
     
     def generate_student_reports(self):
         """Generate various student reports."""
         reports_window = tk.Toplevel(self.controller)
-        reports_window.title("Generate Student Reports")
+        reports_window.title("Gerar Relatórios de Estudantes")
         reports_window.geometry("500x400")
         reports_window.transient(self.controller)
         reports_window.grab_set()
         
-        tk.Label(reports_window, text="Student Reports Generator", 
+        tk.Label(reports_window, text="Gerador de Relatórios de Estudantes", 
                 font=("Arial", 14, "bold")).pack(pady=20)
         
         # Report type selection
-        report_frame = tk.LabelFrame(reports_window, text="Select Report Type", 
+        report_frame = tk.LabelFrame(reports_window, text="Selecionar Tipo de Relatório", 
                                    font=("Arial", 12, "bold"))
         report_frame.pack(fill="x", padx=20, pady=10)
         
         report_var = tk.StringVar(value="enrollment")
         
         report_options = [
-            ("enrollment", "Student Enrollment Report"),
-            ("academic", "Academic Performance Report"), 
-            ("contact", "Student Contact Information"),
-            ("summary", "Complete Student Summary")
+            ("enrollment", "Relatório de Matrículas de Estudantes"),
+            ("academic", "Relatório de Desempenho Acadêmico"), 
+            ("contact", "Informações de Contato dos Estudantes"),
+            ("summary", "Resumo Completo de Estudantes")
         ]
         
         for value, text in report_options:
@@ -2898,15 +2898,15 @@ class SecretaryFrame(tk.Frame):
                           font=("Arial", 10)).pack(anchor='w', padx=10, pady=5)
         
         # Output format
-        format_frame = tk.LabelFrame(reports_window, text="Output Format", 
+        format_frame = tk.LabelFrame(reports_window, text="Formato de Saída", 
                                    font=("Arial", 12, "bold"))
         format_frame.pack(fill="x", padx=20, pady=10)
         
         format_var = tk.StringVar(value="display")
         
-        tk.Radiobutton(format_frame, text="Display in Window", variable=format_var, 
+        tk.Radiobutton(format_frame, text="Exibir em Janela", variable=format_var, 
                       value="display", font=("Arial", 10)).pack(anchor='w', padx=10, pady=5)
-        tk.Radiobutton(format_frame, text="Export to CSV File", variable=format_var, 
+        tk.Radiobutton(format_frame, text="Exportar para Arquivo CSV", variable=format_var, 
                       value="csv", font=("Arial", 10)).pack(anchor='w', padx=10, pady=5)
         
         def generate_report():
@@ -2929,7 +2929,7 @@ class SecretaryFrame(tk.Frame):
                         GROUP BY u.id, u.first_name, u.last_name, u.email
                         ORDER BY u.first_name, u.last_name
                     ''')
-                    columns = ["Student Name", "Email", "Enrolled Courses"]
+                    columns = ["Nome do Estudante", "Email", "Disciplinas Matriculadas"]
                     
                 elif report_type == "academic":
                     cursor.execute('''
@@ -2944,7 +2944,7 @@ class SecretaryFrame(tk.Frame):
                         GROUP BY u.id, c.id
                         ORDER BY u.first_name, u.last_name, c.name
                     ''')
-                    columns = ["Student Name", "Course", "Average Grade"]
+                    columns = ["Nome do Estudante", "Disciplina", "Média de Notas"]
                     
                 elif report_type == "contact":
                     cursor.execute('''
@@ -2953,7 +2953,7 @@ class SecretaryFrame(tk.Frame):
                         FROM users WHERE role = 'STUDENT'
                         ORDER BY first_name, last_name
                     ''')
-                    columns = ["Student Name", "Username", "Email"]
+                    columns = ["Nome do Estudante", "Usuário", "Email"]
                     
                 else:  # summary
                     cursor.execute('''
@@ -2968,7 +2968,7 @@ class SecretaryFrame(tk.Frame):
                         GROUP BY u.id
                         ORDER BY u.first_name, u.last_name
                     ''')
-                    columns = ["Student Name", "Username", "Email", "Enrolled Courses", "Overall Average"]
+                    columns = ["Nome do Estudante", "Usuário", "Email", "Disciplinas Matriculadas", "Média Geral"]
                 
                 data = cursor.fetchall()
                 conn.close()
@@ -2988,17 +2988,17 @@ class SecretaryFrame(tk.Frame):
         tk.Button(button_frame, text="Gerar Relatório", command=generate_report,
                  bg="#4CAF50", fg="white", font=("Arial", 11), width=15).pack(side="left", padx=5)
         
-        tk.Button(button_frame, text="Close", command=reports_window.destroy,
+        tk.Button(button_frame, text="Fechar", command=reports_window.destroy,
                  bg="#f44336", fg="white", font=("Arial", 11), width=15).pack(side="left", padx=5)
     
     def display_report(self, data, columns, report_type):
         """Display report in a new window."""
         display_window = tk.Toplevel(self.controller)
-        display_window.title(f"Report: {report_type.title()}")
+        display_window.title(f"Relatório: {report_type.title()}")
         display_window.geometry("800x600")
         display_window.transient(self.controller)
         
-        tk.Label(display_window, text=f"{report_type.title()} Report", 
+        tk.Label(display_window, text=f"Relatório de {report_type.title()}", 
                 font=("Arial", 14, "bold")).pack(pady=10)
         
         # Create frame for treeview
@@ -3031,7 +3031,7 @@ class SecretaryFrame(tk.Frame):
                     formatted_row.append(str(item))
             tree.insert("", "end", values=formatted_row)
         
-        tk.Button(display_window, text="Close", command=display_window.destroy,
+        tk.Button(display_window, text="Fechar", command=display_window.destroy,
                  bg="#f44336", fg="white", font=("Arial", 11)).pack(pady=10)
     
     def export_report_csv(self, data, columns, report_type):
@@ -3058,11 +3058,11 @@ class SecretaryFrame(tk.Frame):
                             formatted_row.append(str(item))
                     writer.writerow(formatted_row)
             
-            messagebox.showinfo("Export Complete", 
+            messagebox.showinfo("Exportação Completa", 
                               f"Relatório exportado com sucesso para:\n{filename}")
             
         except Exception as e:
-            messagebox.showerror("Export Error", f"Failed to export report: {str(e)}")
+            messagebox.showerror("Erro de Exportação", f"Falha ao exportar relatório: {str(e)}")
     
     def placeholder_action(self, function_name):
         """Placeholder action for secretary functions."""
