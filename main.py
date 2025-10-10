@@ -298,6 +298,94 @@ class LoginFrame(tk.Frame):
         self.username_entry.bind('<Return>', lambda e: self.login())
         self.password_entry.bind('<Return>', lambda e: self.login())
     
+    def call_c_module_login(self, username, password):
+        """Call C module to validate login credentials."""
+        exe_path = os.path.join(os.path.dirname(__file__), 'academic_module.exe')
+        
+        # Check if C module exists
+        if not os.path.exists(exe_path):
+            # Fallback to Python implementation if C module not available
+            conn = sqlite3.connect('academic_system.db')
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT id, username, first_name, last_name, email, role
+                FROM users WHERE username = ? AND password = ?
+            ''', (username, password))
+            user_data = cursor.fetchone()
+            conn.close()
+            
+            if user_data:
+                return {
+                    'success': True,
+                    'id': user_data[0],
+                    'username': user_data[1],
+                    'first_name': user_data[2],
+                    'last_name': user_data[3],
+                    'email': user_data[4],
+                    'role': user_data[5]
+                }
+            return {'success': False}
+        
+        try:
+            # Call C module for login validation
+            result = subprocess.run(
+                [exe_path, 'login', username, password],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            # Parse output
+            output = result.stdout.strip()
+            
+            if "LOGIN_SUCCESS" in output:
+                # Extract user information from output
+                lines = output.split('\n')
+                user_info = {}
+                
+                for line in lines:
+                    if "USER_ID:" in line:
+                        user_info['id'] = int(line.split(':')[1].strip())
+                    elif "USERNAME:" in line:
+                        user_info['username'] = line.split(':')[1].strip()
+                    elif "FIRST_NAME:" in line:
+                        user_info['first_name'] = line.split(':')[1].strip()
+                    elif "LAST_NAME:" in line:
+                        user_info['last_name'] = line.split(':')[1].strip()
+                    elif "EMAIL:" in line:
+                        user_info['email'] = line.split(':')[1].strip()
+                    elif "ROLE:" in line:
+                        user_info['role'] = line.split(':')[1].strip()
+                
+                user_info['success'] = True
+                return user_info
+            else:
+                return {'success': False}
+                
+        except Exception as e:
+            print(f"Erro ao chamar módulo C: {e}")
+            # Fallback to Python implementation
+            conn = sqlite3.connect('academic_system.db')
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT id, username, first_name, last_name, email, role
+                FROM users WHERE username = ? AND password = ?
+            ''', (username, password))
+            user_data = cursor.fetchone()
+            conn.close()
+            
+            if user_data:
+                return {
+                    'success': True,
+                    'id': user_data[0],
+                    'username': user_data[1],
+                    'first_name': user_data[2],
+                    'last_name': user_data[3],
+                    'email': user_data[4],
+                    'role': user_data[5]
+                }
+            return {'success': False}
+
     def login(self):
         """Authenticate user and navigate to appropriate dashboard."""
         username = self.username_entry.get().strip()
@@ -307,33 +395,24 @@ class LoginFrame(tk.Frame):
             messagebox.showerror("Erro", "Por favor, insira usuário e senha.")
             return
         
-        # Query database for user
-        conn = sqlite3.connect('academic_system.db')
-        cursor = conn.cursor()
+        # Call C module to validate login
+        result = self.call_c_module_login(username, password)
         
-        cursor.execute('''
-            SELECT id, username, first_name, last_name, email, role
-            FROM users WHERE username = ? AND password = ?
-        ''', (username, password))
-        
-        user_data = cursor.fetchone()
-        conn.close()
-        
-        if user_data:
+        if result['success']:
             # Store user data
             user_dict = {
-                'id': user_data[0],
-                'username': user_data[1],
-                'first_name': user_data[2],
-                'last_name': user_data[3],
-                'email': user_data[4],
-                'role': user_data[5]
+                'id': result['id'],
+                'username': result['username'],
+                'first_name': result['first_name'],
+                'last_name': result['last_name'],
+                'email': result['email'],
+                'role': result['role']
             }
             
             self.controller.set_current_user(user_dict)
             
             # Navigate to appropriate dashboard
-            role = user_data[5]
+            role = result['role']
             if role == 'TEACHER':
                 self.controller.show_frame(TeacherFrame)
             elif role == 'STUDENT':
@@ -2497,8 +2576,8 @@ class SecretaryFrame(tk.Frame):
                 return
             
             try:
-                # Call the C module simulation with all required data
-                result = self.simulate_c_module_call(first_name, last_name, username, password, email)
+                # Call the C module with all required data
+                result = self.call_c_module_register(first_name, last_name, username, password, email)
                 
                 if result['success']:
                     # Enroll student in selected courses
@@ -2521,60 +2600,89 @@ class SecretaryFrame(tk.Frame):
         
         tk.Button(register_window, text="Enviar Registro", 
                  command=submit_registration, bg="#4CAF50", fg="white",
-                 font=("Arial", 11)).pack(pady=20)
+                 font=("Arial", 11)).pack(pady=15)
     
-    def simulate_c_module_call(self, first_name, last_name, username, password, email):
+    def call_c_module_register(self, first_name, last_name, username, password, email):
         """
-        Simulate C module integration.
-        In a real implementation, this would use subprocess.run() to call a C executable.
+        Call C module to register a new student.
+        Uses the compiled C executable for user management.
         """
-        # Simulate the C module execution
+        import subprocess
+        import os
+        
         try:
-            # This would be: subprocess.run(['./c_module/student_manager', 'create', 
-            #                              first_name, last_name, username, password, email], 
-            #                              capture_output=True, text=True)
+            # Verificar se o executável C existe
+            exe_path = os.path.join(os.path.dirname(__file__), 'academic_module.exe')
+            if not os.path.exists(exe_path):
+                return {'success': False, 'error': 'Módulo C não encontrado. Execute compile.bat para compilar.'}
             
-            # For simulation, we'll add the student directly to the database
-            conn = sqlite3.connect('academic_system.db')
-            cursor = conn.cursor()
+            # Chamar o executável C com o comando register
+            result = subprocess.run(
+                [exe_path, 'register', username, password, first_name, last_name, email],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
             
-            # Check if username already exists
-            cursor.execute('SELECT id FROM users WHERE username = ?', (username,))
-            if cursor.fetchone():
-                conn.close()
-                return {'success': False, 'error': f'Username "{username}" already exists'}
+            # Processar a saída do programa C
+            output = result.stdout.strip()
             
-            cursor.execute('''
-                INSERT INTO users (username, password, first_name, last_name, email, role)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (username, password, first_name, last_name, email, 'STUDENT'))
+            if result.returncode == 0 and 'REGISTER_SUCCESS' in output:
+                # Extrair o student_id da saída
+                for line in output.split('\n'):
+                    if line.startswith('STUDENT_ID:'):
+                        student_id = int(line.split(':')[1])
+                        return {'success': True, 'student_id': student_id}
+                return {'success': False, 'error': 'Não foi possível obter o ID do estudante'}
             
-            student_id = cursor.lastrowid
-            conn.commit()
-            conn.close()
-            
-            return {'success': True, 'student_id': student_id}
-            
+            elif 'USERNAME_EXISTS' in output:
+                return {'success': False, 'error': f'Username "{username}" já existe'}
+            else:
+                error_msg = result.stderr if result.stderr else 'Erro desconhecido no módulo C'
+                return {'success': False, 'error': error_msg}
+                
+        except subprocess.TimeoutExpired:
+            return {'success': False, 'error': 'Timeout ao executar módulo C'}
         except Exception as e:
-            return {'success': False, 'error': str(e)}
+            return {'success': False, 'error': f'Erro ao chamar módulo C: {str(e)}'}
     
     def enroll_student_in_courses(self, student_id, course_ids):
-        """Enroll a student in the specified courses."""
+        """Enroll a student in the specified courses using C module."""
+        import subprocess
+        import os
+        
         try:
-            conn = sqlite3.connect('academic_system.db')
-            cursor = conn.cursor()
+            exe_path = os.path.join(os.path.dirname(__file__), 'academic_module.exe')
+            if not os.path.exists(exe_path):
+                # Fallback para Python se o módulo C não existir
+                conn = sqlite3.connect('academic_system.db')
+                cursor = conn.cursor()
+                
+                for course_id in course_ids:
+                    cursor.execute('''
+                        INSERT OR IGNORE INTO enrollments (user_id, course_id)
+                        VALUES (?, ?)
+                    ''', (student_id, course_id))
+                
+                conn.commit()
+                conn.close()
+                return
             
+            # Usar o módulo C para matricular
             for course_id in course_ids:
-                cursor.execute('''
-                    INSERT OR IGNORE INTO enrollments (user_id, course_id)
-                    VALUES (?, ?)
-                ''', (student_id, course_id))
-            
-            conn.commit()
-            conn.close()
-            
+                result = subprocess.run(
+                    [exe_path, 'enroll', str(student_id), str(course_id)],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                
+                if result.returncode != 0:
+                    print(f"Aviso: Falha ao matricular em curso {course_id}")
+                    
         except Exception as e:
-            print(f"Error enrolling student in courses: {e}")
+            print(f"Erro ao matricular estudante: {e}")
+            # Fallback para Python em caso de erro
     
     def manage_student_records(self):
         """Open student records management window."""
