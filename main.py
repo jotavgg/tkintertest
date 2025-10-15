@@ -20,7 +20,7 @@ class App(tk.Tk):
         
         # Window configuration
         self.title("Sistema de Colaboração Acadêmica")
-        self.geometry("800x600")
+        self.geometry("1366x768")
         self.resizable(True, True)
         
         # Current user session data
@@ -188,10 +188,53 @@ def setup_database():
         )
     ''')
     
+    # Create classes/turmas table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS classes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL,
+            description TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # Create student_classes table (associação entre estudantes e turmas)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS student_classes (
+            student_id INTEGER,
+            class_id INTEGER,
+            assigned_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (student_id, class_id),
+            FOREIGN KEY (student_id) REFERENCES users(id),
+            FOREIGN KEY (class_id) REFERENCES classes(id)
+        )
+    ''')
+    
+    # Create announcements/avisos table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS announcements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            target_class_id INTEGER,
+            created_by INTEGER,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            priority TEXT DEFAULT 'normal',
+            FOREIGN KEY (target_class_id) REFERENCES classes(id),
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        )
+    ''')
+    
     # Insert sample data if tables are empty
     cursor.execute('SELECT COUNT(*) FROM users')
     if cursor.fetchone()[0] == 0:
         insert_sample_data(cursor)
+    
+    # Insert default classes if they don't exist
+    cursor.execute('SELECT COUNT(*) FROM classes')
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("INSERT INTO classes (name, description) VALUES ('Turma A', 'Primeira turma')")
+        cursor.execute("INSERT INTO classes (name, description) VALUES ('Turma B', 'Segunda turma')")
     
     conn.commit()
     conn.close()
@@ -467,6 +510,14 @@ class TeacherFrame(tk.Frame):
         self.course_combo.pack(side="left", padx=5)
         self.course_combo.bind('<<ComboboxSelected>>', self.on_course_selected)
         
+        # Class filter
+        tk.Label(course_selection_frame, text="Filtrar por Turma:", font=("Arial", 10)).pack(side="left", padx=(20, 5))
+        self.class_filter_combo = ttk.Combobox(course_selection_frame, font=("Arial", 10), state="readonly", width=15)
+        self.class_filter_combo['values'] = ['Todas', 'Turma A', 'Turma B', 'Sem Turma']
+        self.class_filter_combo.current(0)
+        self.class_filter_combo.pack(side="left", padx=5)
+        self.class_filter_combo.bind('<<ComboboxSelected>>', lambda e: self.refresh_students())
+        
         # Add "Show All Students" button
         tk.Button(course_selection_frame, text="Mostrar Todos os Estudantes", 
                  command=self.show_all_students, bg="#9C27B0", fg="white",
@@ -478,12 +529,15 @@ class TeacherFrame(tk.Frame):
         students_frame.pack(fill="both", expand=True, pady=10)
         
         # Create Treeview for students
-        columns = ("ID", "Nome", "Email", "Nota Média")
+        columns = ("ID", "Nome", "Email", "Turma", "Nota Média")
         self.students_tree = ttk.Treeview(students_frame, columns=columns, show="headings", height=10)
         
         for col in columns:
             self.students_tree.heading(col, text=col)
-            self.students_tree.column(col, width=150)
+            if col == "Turma":
+                self.students_tree.column(col, width=100)
+            else:
+                self.students_tree.column(col, width=150)
         
         scrollbar = ttk.Scrollbar(students_frame, orient="vertical", command=self.students_tree.yview)
         self.students_tree.configure(yscrollcommand=scrollbar.set)
@@ -566,15 +620,18 @@ class TeacherFrame(tk.Frame):
         conn = sqlite3.connect('academic_system.db')
         cursor = conn.cursor()
         
-        # Get all students with their course information
+        # Get all students with their class and course information
         cursor.execute('''
             SELECT u.id, u.first_name || ' ' || u.last_name as name, u.email,
+                   COALESCE(cl.name, 'Sem Turma') as class_name,
                    GROUP_CONCAT(c.name, ', ') as enrolled_courses
             FROM users u
+            LEFT JOIN student_classes sc ON u.id = sc.student_id
+            LEFT JOIN classes cl ON sc.class_id = cl.id
             LEFT JOIN enrollments e ON u.id = e.user_id
             LEFT JOIN courses c ON e.course_id = c.id
             WHERE u.role = 'STUDENT'
-            GROUP BY u.id, u.first_name, u.last_name, u.email
+            GROUP BY u.id, u.first_name, u.last_name, u.email, cl.name
             ORDER BY u.first_name, u.last_name
         ''')
         
@@ -585,13 +642,11 @@ class TeacherFrame(tk.Frame):
         for item in self.students_tree.get_children():
             self.students_tree.delete(item)
         
-        # Update column headers to show "Enrolled Courses" instead of "Average Grade"
-        self.students_tree.heading("#4", text="Disciplinas Inscritas")
-        
         for student in all_students:
-            courses = student[3] if student[3] else "No enrollments"
+            class_name = student[3]
+            courses = student[4] if student[4] else "Sem matrículas"
             self.students_tree.insert("", "end", values=(
-                student[0], student[1], student[2], courses
+                student[0], student[1], student[2], class_name, courses
             ))
     
     def on_course_selected(self, event):
@@ -600,26 +655,60 @@ class TeacherFrame(tk.Frame):
         if not selection:
             return
         
-        # Restore the original column header for course-specific view
-        self.students_tree.heading("#4", text="Nota Média")
-        
         # Extract course ID from selection
         course_id = int(selection.split("ID: ")[1].rstrip(")"))
+        
+        # Get class filter
+        class_filter = self.class_filter_combo.get()
         
         conn = sqlite3.connect('academic_system.db')
         cursor = conn.cursor()
         
-        # Get enrolled students with their average grades
-        cursor.execute('''
-            SELECT u.id, u.first_name || ' ' || u.last_name as name, u.email,
-                   COALESCE(AVG(s.grade), 0) as avg_grade
-            FROM users u
-            JOIN enrollments e ON u.id = e.user_id
-            LEFT JOIN submissions s ON u.id = s.student_id
-            LEFT JOIN assignments a ON s.assignment_id = a.id AND a.course_id = ?
-            WHERE e.course_id = ? AND u.role = 'STUDENT'
-            GROUP BY u.id, u.first_name, u.last_name, u.email
-        ''', (course_id, course_id))
+        # Build query based on filter
+        if class_filter == 'Todas':
+            cursor.execute('''
+                SELECT u.id, u.first_name || ' ' || u.last_name as name, u.email,
+                       COALESCE(c.name, 'Sem Turma') as class_name,
+                       COALESCE(AVG(s.grade), 0) as avg_grade
+                FROM users u
+                JOIN enrollments e ON u.id = e.user_id
+                LEFT JOIN student_classes sc ON u.id = sc.student_id
+                LEFT JOIN classes c ON sc.class_id = c.id
+                LEFT JOIN submissions s ON u.id = s.student_id
+                LEFT JOIN assignments a ON s.assignment_id = a.id AND a.course_id = ?
+                WHERE e.course_id = ? AND u.role = 'STUDENT'
+                GROUP BY u.id, u.first_name, u.last_name, u.email, c.name
+                ORDER BY u.first_name, u.last_name
+            ''', (course_id, course_id))
+        elif class_filter == 'Sem Turma':
+            cursor.execute('''
+                SELECT u.id, u.first_name || ' ' || u.last_name as name, u.email,
+                       'Sem Turma' as class_name,
+                       COALESCE(AVG(s.grade), 0) as avg_grade
+                FROM users u
+                JOIN enrollments e ON u.id = e.user_id
+                LEFT JOIN submissions s ON u.id = s.student_id
+                LEFT JOIN assignments a ON s.assignment_id = a.id AND a.course_id = ?
+                WHERE e.course_id = ? AND u.role = 'STUDENT'
+                AND u.id NOT IN (SELECT student_id FROM student_classes)
+                GROUP BY u.id, u.first_name, u.last_name, u.email
+                ORDER BY u.first_name, u.last_name
+            ''', (course_id, course_id))
+        else:
+            cursor.execute('''
+                SELECT u.id, u.first_name || ' ' || u.last_name as name, u.email,
+                       c.name as class_name,
+                       COALESCE(AVG(s.grade), 0) as avg_grade
+                FROM users u
+                JOIN enrollments e ON u.id = e.user_id
+                JOIN student_classes sc ON u.id = sc.student_id
+                JOIN classes c ON sc.class_id = c.id
+                LEFT JOIN submissions s ON u.id = s.student_id
+                LEFT JOIN assignments a ON s.assignment_id = a.id AND a.course_id = ?
+                WHERE e.course_id = ? AND u.role = 'STUDENT' AND c.name = ?
+                GROUP BY u.id, u.first_name, u.last_name, u.email, c.name
+                ORDER BY u.first_name, u.last_name
+            ''', (course_id, course_id, class_filter))
         
         students = cursor.fetchall()
         conn.close()
@@ -630,7 +719,7 @@ class TeacherFrame(tk.Frame):
         
         for student in students:
             self.students_tree.insert("", "end", values=(
-                student[0], student[1], student[2], f"{student[3]:.1f}"
+                student[0], student[1], student[2], student[3], f"{student[4]:.1f}"
             ))
     
     def enter_grades(self):
@@ -1660,27 +1749,43 @@ class StudentFrame(tk.Frame):
     def __init__(self, parent, controller):
         super().__init__(parent)
         self.controller = controller
+        self.configure(bg="#f5f5f5")
         
         # Header frame
-        header_frame = tk.Frame(self)
-        header_frame.pack(fill="x", padx=20, pady=10)
+        header_frame = tk.Frame(self, bg="#2c3e50", height=60)
+        header_frame.pack(fill="x")
+        header_frame.pack_propagate(False)
         
         self.welcome_label = tk.Label(header_frame, text="Painel do Estudante", 
-                                     font=("Arial", 16, "bold"))
-        self.welcome_label.pack(side="left")
+                                     font=("Arial", 18, "bold"), bg="#2c3e50", fg="white")
+        self.welcome_label.pack(side="left", padx=30, pady=15)
         
-        logout_btn = tk.Button(header_frame, text="Sair", command=controller.logout,
-                              bg="#f44336", fg="white")
-        logout_btn.pack(side="right")
+        logout_btn = tk.Button(header_frame, text="⎋ Sair", command=controller.logout,
+                              bg="#e74c3c", fg="white", font=("Arial", 10, "bold"),
+                              relief="flat", padx=20, pady=8, cursor="hand2")
+        logout_btn.pack(side="right", padx=20)
         
-        # Main content frame
-        content_frame = tk.Frame(self)
-        content_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        # Main content with tabs
+        content_frame = tk.Frame(self, bg="#f5f5f5")
+        content_frame.pack(fill="both", expand=True, padx=20, pady=20)
         
+        # Create Notebook for tabs
+        notebook = ttk.Notebook(content_frame)
+        notebook.pack(fill="both", expand=True)
+        
+        # Tab 1: Courses and Grades
+        courses_tab = tk.Frame(notebook, bg="white")
+        notebook.add(courses_tab, text="📚 Minhas Disciplinas")
+        
+        # Tab 2: Notifications
+        notifications_tab = tk.Frame(notebook, bg="white")
+        notebook.add(notifications_tab, text="🔔 Notificações")
+        
+        # ===== COURSES TAB =====
         # Enrolled courses
-        courses_frame = tk.LabelFrame(content_frame, text="Minhas Disciplinas e Notas", 
-                                    font=("Arial", 12, "bold"))
-        courses_frame.pack(fill="both", expand=True, pady=10)
+        courses_frame = tk.LabelFrame(courses_tab, text="Minhas Disciplinas e Notas", 
+                                    font=("Arial", 12, "bold"), bg="white")
+        courses_frame.pack(fill="both", expand=True, padx=20, pady=20)
         
         # Create Treeview for courses
         columns = ("Disciplina", "Professor", "Nota Média")
@@ -1693,16 +1798,26 @@ class StudentFrame(tk.Frame):
         scrollbar_courses = ttk.Scrollbar(courses_frame, orient="vertical", command=self.courses_tree.yview)
         self.courses_tree.configure(yscrollcommand=scrollbar_courses.set)
         
-        self.courses_tree.pack(side="left", fill="both", expand=True)
+        self.courses_tree.pack(side="left", fill="both", expand=True, padx=10, pady=10)
         scrollbar_courses.pack(side="right", fill="y")
         
         # Assignments deadlines
-        deadlines_frame = tk.LabelFrame(content_frame, text="Atividades Pendentes", 
-                                      font=("Arial", 12, "bold"))
-        deadlines_frame.pack(fill="x", pady=10)
+        deadlines_frame = tk.LabelFrame(courses_tab, text="Atividades Pendentes", 
+                                      font=("Arial", 12, "bold"), bg="white")
+        deadlines_frame.pack(fill="x", padx=20, pady=(0, 20))
         
-        assignments_frame = tk.Frame(deadlines_frame)
+        assignments_frame = tk.Frame(deadlines_frame, bg="white")
         assignments_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # ===== NOTIFICATIONS TAB =====
+        notif_header = tk.Frame(notifications_tab, bg="white")
+        notif_header.pack(fill="x", padx=20, pady=20)
+        
+        tk.Label(notif_header, text="📢 Avisos e Notificações", 
+                font=("Arial", 16, "bold"), bg="white", fg="#2c3e50").pack(anchor="w")
+        
+        self.notifications_frame = tk.Frame(notifications_tab, bg="white")
+        self.notifications_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
         
         # Create Treeview for assignments
         columns = ("Disciplina", "Atividade", "Tipo", "Data de Entrega", "Status")
@@ -1758,6 +1873,95 @@ class StudentFrame(tk.Frame):
             )
             self.load_courses()
             self.load_deadlines()
+            self.load_notifications()
+    
+    def load_notifications(self):
+        """Load announcements for the student's class."""
+        if not self.controller.current_user:
+            return
+        
+        # Clear existing notifications
+        for widget in self.notifications_frame.winfo_children():
+            widget.destroy()
+        
+        conn = sqlite3.connect('academic_system.db')
+        cursor = conn.cursor()
+        
+        # Get student's class
+        cursor.execute('''
+            SELECT c.id, c.name
+            FROM classes c
+            JOIN student_classes sc ON c.id = sc.class_id
+            WHERE sc.student_id = ?
+        ''', (self.controller.current_user['id'],))
+        
+        student_class = cursor.fetchone()
+        
+        if student_class:
+            class_id, class_name = student_class
+            
+            # Show class info
+            class_info = tk.Frame(self.notifications_frame, bg="#3498db", relief="flat")
+            class_info.pack(fill="x", pady=(0, 20))
+            
+            tk.Label(class_info, text=f"Sua Turma: {class_name}", 
+                    font=("Arial", 14, "bold"), bg="#3498db", fg="white").pack(pady=15)
+            
+            # Get announcements for this class or all classes
+            cursor.execute('''
+                SELECT title, content, priority, created_at
+                FROM announcements
+                WHERE target_class_id = ? OR target_class_id IS NULL
+                ORDER BY created_at DESC
+            ''', (class_id,))
+        else:
+            # No class assigned - show only general announcements
+            no_class_info = tk.Frame(self.notifications_frame, bg="#e67e22", relief="flat")
+            no_class_info.pack(fill="x", pady=(0, 20))
+            
+            tk.Label(no_class_info, text="⚠️ Você não está em nenhuma turma ainda", 
+                    font=("Arial", 12, "bold"), bg="#e67e22", fg="white").pack(pady=15)
+            
+            cursor.execute('''
+                SELECT title, content, priority, created_at
+                FROM announcements
+                WHERE target_class_id IS NULL
+                ORDER BY created_at DESC
+            ''')
+        
+        announcements = cursor.fetchall()
+        conn.close()
+        
+        if announcements:
+            for title, content, priority, created_at in announcements:
+                # Create announcement card
+                card = tk.Frame(self.notifications_frame, bg="white", relief="solid", bd=1)
+                card.pack(fill="x", pady=8, padx=5)
+                
+                # Header with priority indicator
+                header = tk.Frame(card, bg="#ecf0f1")
+                header.pack(fill="x")
+                
+                priority_color = "#e74c3c" if priority == "high" else "#27ae60"
+                priority_text = "🔴 ALTA PRIORIDADE" if priority == "high" else "🟢 Normal"
+                
+                tk.Label(header, text=priority_text, font=("Arial", 9, "bold"),
+                        bg=priority_color, fg="white", padx=10, pady=3).pack(side="left")
+                
+                tk.Label(header, text=created_at, font=("Arial", 9),
+                        bg="#ecf0f1", fg="#7f8c8d").pack(side="right", padx=10, pady=3)
+                
+                # Title
+                tk.Label(card, text=title, font=("Arial", 13, "bold"),
+                        bg="white", fg="#2c3e50", anchor="w").pack(fill="x", padx=15, pady=(10, 5))
+                
+                # Content
+                content_label = tk.Label(card, text=content, font=("Arial", 11),
+                                        bg="white", fg="#34495e", anchor="w", justify="left", wraplength=800)
+                content_label.pack(fill="x", padx=15, pady=(0, 15))
+        else:
+            tk.Label(self.notifications_frame, text="📭 Nenhum aviso disponível no momento", 
+                    font=("Arial", 12), bg="white", fg="#7f8c8d").pack(pady=50)
     
     def load_courses(self):
         """Load student's enrolled courses and grades."""
@@ -2385,60 +2589,668 @@ class CoordinatorFrame(tk.Frame):
 
 
 class SecretaryFrame(tk.Frame):
-    """Secretary dashboard with Excel import and C module integration."""
+    """Secretary dashboard with modern management panel design."""
     
     def __init__(self, parent, controller):
         super().__init__(parent)
         self.controller = controller
+        self.configure(bg="#f5f5f5")
         
-        # Header frame
-        header_frame = tk.Frame(self)
-        header_frame.pack(fill="x", padx=20, pady=10)
+        # Top Header Bar
+        header_frame = tk.Frame(self, bg="#2c3e50", height=60)
+        header_frame.pack(fill="x")
+        header_frame.pack_propagate(False)
         
-        self.welcome_label = tk.Label(header_frame, text="Painel da Secretaria", 
-                                     font=("Arial", 16, "bold"))
-        self.welcome_label.pack(side="left")
+        self.welcome_label = tk.Label(header_frame, text="Painel de Gerenciamento da Secretaria", 
+                                     font=("Arial", 18, "bold"), bg="#2c3e50", fg="white")
+        self.welcome_label.pack(side="left", padx=30, pady=15)
         
-        logout_btn = tk.Button(header_frame, text="Sair", command=controller.logout,
-                              bg="#f44336", fg="white")
-        logout_btn.pack(side="right")
+        logout_btn = tk.Button(header_frame, text="⎋ Sair", command=controller.logout,
+                              bg="#e74c3c", fg="white", font=("Arial", 10, "bold"),
+                              relief="flat", padx=20, pady=8, cursor="hand2")
+        logout_btn.pack(side="right", padx=20)
         
-        # Main content
-        content_frame = tk.Frame(self)
-        content_frame.pack(fill="both", expand=True, padx=20, pady=50)
+        # Main Container
+        main_container = tk.Frame(self, bg="#f5f5f5")
+        main_container.pack(fill="both", expand=True, padx=20, pady=20)
         
-        tk.Label(content_frame, text="Funções da Secretaria", 
-                font=("Arial", 14, "bold")).pack(pady=20)
+        # Sidebar with navigation
+        sidebar = tk.Frame(main_container, bg="#34495e", width=220)
+        sidebar.pack(side="left", fill="y", padx=(0, 20))
+        sidebar.pack_propagate(False)
         
-        # Excel import button
-        tk.Button(content_frame, text="Importar Estudantes do Excel", 
-                 font=("Arial", 11), width=30, height=2,
-                 bg="#4CAF50", fg="white",
-                 command=self.import_students_excel).pack(pady=10)
+        tk.Label(sidebar, text="MENU", font=("Arial", 12, "bold"), 
+                bg="#34495e", fg="#ecf0f1", pady=15).pack(fill="x")
         
-        # C module integration button
-        tk.Button(content_frame, text="Registrar Estudante (Módulo C)", 
-                 font=("Arial", 11), width=30, height=2,
-                 bg="#2196F3", fg="white",
-                 command=self.register_student_c_module).pack(pady=10)
-        
-        # Other functions
-        other_functions = [
-            ("Gerenciar Registros de Estudantes", self.manage_student_records),
-            ("Ver Todos os Estudantes", self.view_all_students),
-            ("Processar Matrículas", self.process_enrollments),
-            ("Gerar Relatórios de Estudantes", self.generate_student_reports)
+        # Navigation buttons
+        nav_buttons = [
+            ("📊 Dashboard", self.show_dashboard),
+            ("👥 Gerenciar Turmas", self.manage_classes),
+            ("� Distribuir Alunos", self.distribute_students),
+            ("�📢 Enviar Avisos", self.send_announcements),
+            ("📝 Registrar Estudante", self.register_student_c_module),
+            ("📥 Importar Excel", self.import_students_excel),
+            ("👨‍🎓 Ver Estudantes", self.view_all_students),
+            ("📋 Matrículas", self.process_enrollments),
         ]
         
-        for func_name, func_command in other_functions:
-            tk.Button(content_frame, text=func_name, font=("Arial", 11),
-                     width=30, height=2, command=func_command).pack(pady=5)
+        for text, command in nav_buttons:
+            btn = tk.Button(sidebar, text=text, command=command, 
+                          bg="#34495e", fg="white", font=("Arial", 10),
+                          relief="flat", anchor="w", padx=20, pady=12,
+                          cursor="hand2", activebackground="#2c3e50",
+                          activeforeground="white")
+            btn.pack(fill="x", pady=2)
+            btn.bind("<Enter>", lambda e, b=btn: b.config(bg="#2c3e50"))
+            btn.bind("<Leave>", lambda e, b=btn: b.config(bg="#34495e"))
+        
+        # Content area
+        self.content_area = tk.Frame(main_container, bg="#ffffff", relief="flat")
+        self.content_area.pack(side="left", fill="both", expand=True)
+        
+        # Show dashboard by default
+        self.show_dashboard()
+    
+    def clear_content(self):
+        """Clear the content area."""
+        for widget in self.content_area.winfo_children():
+            widget.destroy()
+    
+    def show_dashboard(self):
+        """Show main dashboard with statistics."""
+        self.clear_content()
+        
+        # Dashboard title
+        title_frame = tk.Frame(self.content_area, bg="white")
+        title_frame.pack(fill="x", padx=30, pady=20)
+        
+        tk.Label(title_frame, text="Dashboard", font=("Arial", 20, "bold"),
+                bg="white", fg="#2c3e50").pack(anchor="w")
+        
+        # Statistics cards
+        stats_frame = tk.Frame(self.content_area, bg="white")
+        stats_frame.pack(fill="x", padx=30, pady=10)
+        
+        # Get statistics
+        conn = sqlite3.connect('academic_system.db')
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT COUNT(*) FROM users WHERE role='STUDENT'")
+        total_students = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM courses")
+        total_courses = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM classes")
+        total_classes = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM announcements")
+        total_announcements = cursor.fetchone()[0]
+        
+        conn.close()
+        
+        # Create stat cards
+        stats = [
+            ("Total de Estudantes", total_students, "#3498db"),
+            ("Disciplinas", total_courses, "#2ecc71"),
+            ("Turmas", total_classes, "#e67e22"),
+            ("Avisos Enviados", total_announcements, "#9b59b6"),
+        ]
+        
+        for idx, (label, value, color) in enumerate(stats):
+            card = tk.Frame(stats_frame, bg=color, relief="flat", bd=0)
+            card.grid(row=0, column=idx, padx=10, pady=10, sticky="ew")
+            stats_frame.grid_columnconfigure(idx, weight=1)
+            
+            tk.Label(card, text=str(value), font=("Arial", 32, "bold"),
+                    bg=color, fg="white").pack(pady=(20, 5))
+            tk.Label(card, text=label, font=("Arial", 11),
+                    bg=color, fg="white").pack(pady=(0, 20))
+        
+        # Recent activity section
+        activity_frame = tk.LabelFrame(self.content_area, text="Distribuição de Estudantes por Turma",
+                                      font=("Arial", 14, "bold"), bg="white",
+                                      fg="#2c3e50", padx=20, pady=10)
+        activity_frame.pack(fill="both", expand=True, padx=30, pady=20)
+        
+        conn = sqlite3.connect('academic_system.db')
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT c.name, COUNT(sc.student_id) as count
+            FROM classes c
+            LEFT JOIN student_classes sc ON c.id = sc.class_id
+            GROUP BY c.id, c.name
+            ORDER BY c.name
+        ''')
+        class_distribution = cursor.fetchall()
+        conn.close()
+        
+        for class_name, count in class_distribution:
+            row = tk.Frame(activity_frame, bg="white")
+            row.pack(fill="x", pady=8)
+            
+            tk.Label(row, text=f"📚 {class_name}:", font=("Arial", 12, "bold"),
+                    bg="white", fg="#34495e").pack(side="left")
+            tk.Label(row, text=f"{count} estudante(s)", font=("Arial", 12),
+                    bg="white", fg="#7f8c8d").pack(side="left", padx=10)
+    
+    def manage_classes(self):
+        """Manage student classes/turmas."""
+        self.clear_content()
+        
+        # Title
+        title_frame = tk.Frame(self.content_area, bg="white")
+        title_frame.pack(fill="x", padx=30, pady=20)
+        
+        tk.Label(title_frame, text="Gerenciamento de Turmas", font=("Arial", 20, "bold"),
+                bg="white", fg="#2c3e50").pack(anchor="w")
+        
+        # Two columns: Class A and Class B
+        classes_container = tk.Frame(self.content_area, bg="white")
+        classes_container.pack(fill="both", expand=True, padx=30, pady=10)
+        
+        conn = sqlite3.connect('academic_system.db')
+        cursor = conn.cursor()
+        
+        # Get classes
+        cursor.execute("SELECT id, name, description FROM classes ORDER BY name")
+        classes = cursor.fetchall()
+        
+        for idx, (class_id, class_name, description) in enumerate(classes):
+            class_frame = tk.LabelFrame(classes_container, text=class_name,
+                                       font=("Arial", 14, "bold"), bg="#ecf0f1",
+                                       fg="#2c3e50", padx=15, pady=10)
+            class_frame.grid(row=0, column=idx, padx=10, pady=10, sticky="nsew")
+            classes_container.grid_columnconfigure(idx, weight=1)
+            classes_container.grid_rowconfigure(0, weight=1)
+            
+            # Students in this class
+            cursor.execute('''
+                SELECT u.id, u.first_name, u.last_name, u.username
+                FROM users u
+                JOIN student_classes sc ON u.id = sc.student_id
+                WHERE sc.class_id = ? AND u.role = 'STUDENT'
+                ORDER BY u.first_name, u.last_name
+            ''', (class_id,))
+            students_in_class = cursor.fetchall()
+            
+            # Listbox with scrollbar
+            list_frame = tk.Frame(class_frame, bg="#ecf0f1")
+            list_frame.pack(fill="both", expand=True, pady=10)
+            
+            scrollbar = tk.Scrollbar(list_frame)
+            scrollbar.pack(side="right", fill="y")
+            
+            student_listbox = tk.Listbox(list_frame, font=("Arial", 10),
+                                        yscrollcommand=scrollbar.set, height=15)
+            student_listbox.pack(side="left", fill="both", expand=True)
+            scrollbar.config(command=student_listbox.yview)
+            
+            for student_id, first_name, last_name, username in students_in_class:
+                student_listbox.insert(tk.END, f"{first_name} {last_name} ({username})")
+                student_listbox.itemconfig(tk.END, {'bg': 'white'})
+            
+            # Buttons
+            btn_frame = tk.Frame(class_frame, bg="#ecf0f1")
+            btn_frame.pack(fill="x", pady=5)
+            
+            tk.Button(btn_frame, text="➕ Adicionar Estudante", 
+                     command=lambda cid=class_id: self.add_student_to_class(cid),
+                     bg="#27ae60", fg="white", font=("Arial", 10, "bold"),
+                     relief="flat", cursor="hand2").pack(side="left", padx=5)
+            
+            tk.Button(btn_frame, text="➖ Remover Selecionado",
+                     command=lambda lb=student_listbox, cid=class_id: self.remove_student_from_class(lb, cid),
+                     bg="#e74c3c", fg="white", font=("Arial", 10, "bold"),
+                     relief="flat", cursor="hand2").pack(side="left", padx=5)
+        
+        conn.close()
+    
+    def distribute_students(self):
+        """Distribute students without class between Turma A and Turma B."""
+        self.clear_content()
+        
+        # Title
+        title_frame = tk.Frame(self.content_area, bg="white")
+        title_frame.pack(fill="x", padx=30, pady=20)
+        
+        tk.Label(title_frame, text="Distribuir Alunos nas Turmas", font=("Arial", 20, "bold"),
+                bg="white", fg="#2c3e50").pack(anchor="w")
+        
+        # Info frame
+        info_frame = tk.LabelFrame(self.content_area, text="Informações",
+                                  font=("Arial", 12, "bold"), bg="white", padx=20, pady=15)
+        info_frame.pack(fill="x", padx=30, pady=10)
+        
+        conn = sqlite3.connect('academic_system.db')
+        cursor = conn.cursor()
+        
+        # Count students without class
+        cursor.execute('''
+            SELECT COUNT(*) FROM users u
+            WHERE u.role = 'STUDENT'
+            AND u.id NOT IN (SELECT student_id FROM student_classes)
+        ''')
+        students_without_class = cursor.fetchone()[0]
+        
+        # Count students in each class
+        cursor.execute('''
+            SELECT c.name, COUNT(sc.student_id)
+            FROM classes c
+            LEFT JOIN student_classes sc ON c.id = sc.class_id
+            GROUP BY c.id, c.name
+            ORDER BY c.name
+        ''')
+        class_counts = cursor.fetchall()
+        
+        conn.close()
+        
+        # Display info
+        tk.Label(info_frame, text=f"👥 Alunos sem turma: {students_without_class}", 
+                font=("Arial", 12), bg="white", fg="#e67e22").pack(anchor="w", pady=3)
+        
+        for class_name, count in class_counts:
+            tk.Label(info_frame, text=f"📚 {class_name}: {count} aluno(s)", 
+                    font=("Arial", 12), bg="white", fg="#34495e").pack(anchor="w", pady=3)
+        
+        # Students list
+        if students_without_class > 0:
+            students_frame = tk.LabelFrame(self.content_area, text="Alunos Sem Turma",
+                                          font=("Arial", 12, "bold"), bg="white", padx=20, pady=15)
+            students_frame.pack(fill="both", expand=True, padx=30, pady=10)
+            
+            # Listbox
+            list_frame = tk.Frame(students_frame, bg="white")
+            list_frame.pack(fill="both", expand=True, pady=10)
+            
+            scrollbar = tk.Scrollbar(list_frame)
+            scrollbar.pack(side="right", fill="y")
+            
+            students_listbox = tk.Listbox(list_frame, font=("Arial", 11),
+                                         yscrollcommand=scrollbar.set, height=15)
+            students_listbox.pack(side="left", fill="both", expand=True)
+            scrollbar.config(command=students_listbox.yview)
+            
+            # Load students
+            conn = sqlite3.connect('academic_system.db')
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT u.id, u.first_name, u.last_name, u.username
+                FROM users u
+                WHERE u.role = 'STUDENT'
+                AND u.id NOT IN (SELECT student_id FROM student_classes)
+                ORDER BY u.first_name, u.last_name
+            ''')
+            unassigned_students = cursor.fetchall()
+            conn.close()
+            
+            for student_id, first_name, last_name, username in unassigned_students:
+                students_listbox.insert(tk.END, f"{first_name} {last_name} ({username})")
+            
+            # Buttons
+            btn_frame = tk.Frame(self.content_area, bg="white")
+            btn_frame.pack(fill="x", padx=30, pady=20)
+            
+            def distribute_auto():
+                """Automatically distribute students evenly between classes."""
+                if students_without_class == 0:
+                    messagebox.showinfo("Info", "Não há alunos sem turma.")
+                    return
+                
+                if not messagebox.askyesno("Confirmar", 
+                                          f"Distribuir {students_without_class} aluno(s) automaticamente entre as turmas?"):
+                    return
+                
+                conn = sqlite3.connect('academic_system.db')
+                cursor = conn.cursor()
+                
+                # Get class IDs
+                cursor.execute('SELECT id FROM classes ORDER BY name')
+                class_ids = [row[0] for row in cursor.fetchall()]
+                
+                # Get unassigned students
+                cursor.execute('''
+                    SELECT id FROM users
+                    WHERE role = 'STUDENT'
+                    AND id NOT IN (SELECT student_id FROM student_classes)
+                    ORDER BY id
+                ''')
+                student_ids = [row[0] for row in cursor.fetchall()]
+                
+                # Distribute evenly
+                for idx, student_id in enumerate(student_ids):
+                    class_id = class_ids[idx % len(class_ids)]
+                    cursor.execute('''
+                        INSERT OR IGNORE INTO student_classes (student_id, class_id)
+                        VALUES (?, ?)
+                    ''', (student_id, class_id))
+                
+                conn.commit()
+                conn.close()
+                
+                messagebox.showinfo("Sucesso", 
+                                  f"{len(student_ids)} aluno(s) distribuído(s) entre as turmas!")
+                self.distribute_students()  # Refresh
+            
+            def move_to_class_a():
+                """Move selected students to Turma A."""
+                selection = students_listbox.curselection()
+                if not selection:
+                    messagebox.showwarning("Aviso", "Selecione pelo menos um aluno.")
+                    return
+                
+                conn = sqlite3.connect('academic_system.db')
+                cursor = conn.cursor()
+                cursor.execute("SELECT id FROM classes WHERE name = 'Turma A'")
+                class_id = cursor.fetchone()[0]
+                
+                count = 0
+                for idx in selection:
+                    student_text = students_listbox.get(idx)
+                    username = student_text.split("(")[1].rstrip(")")
+                    
+                    cursor.execute("SELECT id FROM users WHERE username = ?", (username,))
+                    student_id = cursor.fetchone()[0]
+                    
+                    cursor.execute('''
+                        INSERT OR IGNORE INTO student_classes (student_id, class_id)
+                        VALUES (?, ?)
+                    ''', (student_id, class_id))
+                    count += 1
+                
+                conn.commit()
+                conn.close()
+                
+                messagebox.showinfo("Sucesso", f"{count} aluno(s) movido(s) para Turma A!")
+                self.distribute_students()  # Refresh
+            
+            def move_to_class_b():
+                """Move selected students to Turma B."""
+                selection = students_listbox.curselection()
+                if not selection:
+                    messagebox.showwarning("Aviso", "Selecione pelo menos um aluno.")
+                    return
+                
+                conn = sqlite3.connect('academic_system.db')
+                cursor = conn.cursor()
+                cursor.execute("SELECT id FROM classes WHERE name = 'Turma B'")
+                class_id = cursor.fetchone()[0]
+                
+                count = 0
+                for idx in selection:
+                    student_text = students_listbox.get(idx)
+                    username = student_text.split("(")[1].rstrip(")")
+                    
+                    cursor.execute("SELECT id FROM users WHERE username = ?", (username,))
+                    student_id = cursor.fetchone()[0]
+                    
+                    cursor.execute('''
+                        INSERT OR IGNORE INTO student_classes (student_id, class_id)
+                        VALUES (?, ?)
+                    ''', (student_id, class_id))
+                    count += 1
+                
+                conn.commit()
+                conn.close()
+                
+                messagebox.showinfo("Sucesso", f"{count} aluno(s) movido(s) para Turma B!")
+                self.distribute_students()  # Refresh
+            
+            tk.Button(btn_frame, text="🔄 Distribuir Automaticamente", 
+                     command=distribute_auto,
+                     bg="#3498db", fg="white", font=("Arial", 11, "bold"),
+                     relief="flat", padx=20, pady=10, cursor="hand2").pack(side="left", padx=5)
+            
+            tk.Button(btn_frame, text="➡️ Mover para Turma A", 
+                     command=move_to_class_a,
+                     bg="#27ae60", fg="white", font=("Arial", 11, "bold"),
+                     relief="flat", padx=20, pady=10, cursor="hand2").pack(side="left", padx=5)
+            
+            tk.Button(btn_frame, text="➡️ Mover para Turma B", 
+                     command=move_to_class_b,
+                     bg="#2ecc71", fg="white", font=("Arial", 11, "bold"),
+                     relief="flat", padx=20, pady=10, cursor="hand2").pack(side="left", padx=5)
+        else:
+            tk.Label(self.content_area, text="✅ Todos os alunos já estão distribuídos em turmas!", 
+                    font=("Arial", 14), bg="white", fg="#27ae60").pack(pady=50)
+    
+    def add_student_to_class(self, class_id):
+        """Add a student to a class."""
+        # Create selection window
+        select_window = tk.Toplevel(self.controller)
+        select_window.title("Adicionar Estudante à Turma")
+        select_window.geometry("400x500")
+        select_window.transient(self.controller)
+        select_window.grab_set()
+        
+        tk.Label(select_window, text="Selecione um Estudante", 
+                font=("Arial", 14, "bold")).pack(pady=20)
+        
+        # Get students not in this class
+        conn = sqlite3.connect('academic_system.db')
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT u.id, u.first_name, u.last_name, u.username
+            FROM users u
+            WHERE u.role = 'STUDENT' 
+            AND u.id NOT IN (
+                SELECT student_id FROM student_classes WHERE class_id = ?
+            )
+            ORDER BY u.first_name, u.last_name
+        ''', (class_id,))
+        available_students = cursor.fetchall()
+        conn.close()
+        
+        if not available_students:
+            messagebox.showinfo("Info", "Todos os estudantes já estão nesta turma.")
+            select_window.destroy()
+            return
+        
+        # Listbox
+        list_frame = tk.Frame(select_window)
+        list_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        
+        scrollbar = tk.Scrollbar(list_frame)
+        scrollbar.pack(side="right", fill="y")
+        
+        student_listbox = tk.Listbox(list_frame, font=("Arial", 11),
+                                     yscrollcommand=scrollbar.set)
+        student_listbox.pack(side="left", fill="both", expand=True)
+        scrollbar.config(command=student_listbox.yview)
+        
+        for student_id, first_name, last_name, username in available_students:
+            student_listbox.insert(tk.END, f"{first_name} {last_name} ({username})")
+        
+        def confirm_add():
+            selection = student_listbox.curselection()
+            if not selection:
+                messagebox.showwarning("Aviso", "Por favor, selecione um estudante.")
+                return
+            
+            student_id = available_students[selection[0]][0]
+            
+            conn = sqlite3.connect('academic_system.db')
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT OR IGNORE INTO student_classes (student_id, class_id)
+                VALUES (?, ?)
+            ''', (student_id, class_id))
+            conn.commit()
+            conn.close()
+            
+            messagebox.showinfo("Sucesso", "Estudante adicionado à turma!")
+            select_window.destroy()
+            self.manage_classes()  # Refresh
+        
+        tk.Button(select_window, text="Adicionar", command=confirm_add,
+                 bg="#27ae60", fg="white", font=("Arial", 11, "bold"),
+                 padx=20, pady=10).pack(pady=10)
+    
+    def remove_student_from_class(self, listbox, class_id):
+        """Remove selected student from class."""
+        selection = listbox.curselection()
+        if not selection:
+            messagebox.showwarning("Aviso", "Por favor, selecione um estudante.")
+            return
+        
+        student_text = listbox.get(selection[0])
+        username = student_text.split("(")[1].rstrip(")")
+        
+        if not messagebox.askyesno("Confirmar", 
+                                   f"Remover {student_text} da turma?"):
+            return
+        
+        conn = sqlite3.connect('academic_system.db')
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT id FROM users WHERE username = ?", (username,))
+        student_id = cursor.fetchone()[0]
+        
+        cursor.execute('''
+            DELETE FROM student_classes 
+            WHERE student_id = ? AND class_id = ?
+        ''', (student_id, class_id))
+        conn.commit()
+        conn.close()
+        
+        messagebox.showinfo("Sucesso", "Estudante removido da turma!")
+        self.manage_classes()  # Refresh
+    
+    def send_announcements(self):
+        """Send announcements to students."""
+        self.clear_content()
+        
+        # Title
+        title_frame = tk.Frame(self.content_area, bg="white")
+        title_frame.pack(fill="x", padx=30, pady=20)
+        
+        tk.Label(title_frame, text="Enviar Avisos aos Estudantes", font=("Arial", 20, "bold"),
+                bg="white", fg="#2c3e50").pack(anchor="w")
+        
+        # Form container
+        form_frame = tk.LabelFrame(self.content_area, text="Novo Aviso",
+                                  font=("Arial", 14, "bold"), bg="white",
+                                  fg="#2c3e50", padx=20, pady=20)
+        form_frame.pack(fill="both", expand=True, padx=30, pady=10)
+        
+        # Title input
+        tk.Label(form_frame, text="Título do Aviso:", font=("Arial", 12, "bold"),
+                bg="white").pack(anchor="w", pady=(10, 5))
+        title_entry = tk.Entry(form_frame, font=("Arial", 12), width=60)
+        title_entry.pack(fill="x", pady=5)
+        
+        # Content input
+        tk.Label(form_frame, text="Conteúdo:", font=("Arial", 12, "bold"),
+                bg="white").pack(anchor="w", pady=(15, 5))
+        content_text = tk.Text(form_frame, font=("Arial", 11), height=8, width=60)
+        content_text.pack(fill="both", expand=True, pady=5)
+        
+        # Target selection
+        target_frame = tk.Frame(form_frame, bg="white")
+        target_frame.pack(fill="x", pady=15)
+        
+        tk.Label(target_frame, text="Enviar para:", font=("Arial", 12, "bold"),
+                bg="white").pack(side="left", padx=(0, 15))
+        
+        target_var = tk.StringVar(value="all")
+        tk.Radiobutton(target_frame, text="Todas as Turmas", variable=target_var,
+                      value="all", font=("Arial", 11), bg="white").pack(side="left", padx=10)
+        tk.Radiobutton(target_frame, text="Turma A", variable=target_var,
+                      value="1", font=("Arial", 11), bg="white").pack(side="left", padx=10)
+        tk.Radiobutton(target_frame, text="Turma B", variable=target_var,
+                      value="2", font=("Arial", 11), bg="white").pack(side="left", padx=10)
+        
+        # Priority selection
+        priority_frame = tk.Frame(form_frame, bg="white")
+        priority_frame.pack(fill="x", pady=5)
+        
+        tk.Label(priority_frame, text="Prioridade:", font=("Arial", 12, "bold"),
+                bg="white").pack(side="left", padx=(0, 15))
+        
+        priority_var = tk.StringVar(value="normal")
+        tk.Radiobutton(priority_frame, text="Normal", variable=priority_var,
+                      value="normal", font=("Arial", 11), bg="white").pack(side="left", padx=10)
+        tk.Radiobutton(priority_frame, text="Alta", variable=priority_var,
+                      value="high", font=("Arial", 11), bg="white", fg="#e74c3c").pack(side="left", padx=10)
+        
+        def send_announcement():
+            title = title_entry.get().strip()
+            content = content_text.get("1.0", tk.END).strip()
+            target = target_var.get()
+            priority = priority_var.get()
+            
+            if not title or not content:
+                messagebox.showerror("Erro", "Por favor, preencha título e conteúdo.")
+                return
+            
+            conn = sqlite3.connect('academic_system.db')
+            cursor = conn.cursor()
+            
+            target_class_id = None if target == "all" else int(target)
+            user_id = self.controller.current_user['id']
+            
+            cursor.execute('''
+                INSERT INTO announcements (title, content, target_class_id, created_by, priority)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (title, content, target_class_id, user_id, priority))
+            
+            conn.commit()
+            conn.close()
+            
+            target_text = "todas as turmas" if target == "all" else f"Turma {'A' if target == '1' else 'B'}"
+            messagebox.showinfo("Sucesso", f"Aviso enviado para {target_text}!")
+            
+            title_entry.delete(0, tk.END)
+            content_text.delete("1.0", tk.END)
+        
+        tk.Button(form_frame, text="📢 Enviar Aviso", command=send_announcement,
+                 bg="#3498db", fg="white", font=("Arial", 12, "bold"),
+                 relief="flat", padx=30, pady=12, cursor="hand2").pack(pady=20)
+        
+        # Recent announcements
+        recent_frame = tk.LabelFrame(self.content_area, text="Avisos Recentes",
+                                    font=("Arial", 14, "bold"), bg="white",
+                                    fg="#2c3e50", padx=20, pady=10)
+        recent_frame.pack(fill="x", padx=30, pady=(0, 20))
+        
+        conn = sqlite3.connect('academic_system.db')
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT a.title, a.created_at, c.name as class_name, a.priority
+            FROM announcements a
+            LEFT JOIN classes c ON a.target_class_id = c.id
+            ORDER BY a.created_at DESC
+            LIMIT 5
+        ''')
+        recent_announcements = cursor.fetchall()
+        conn.close()
+        
+        if recent_announcements:
+            for title, created_at, class_name, priority in recent_announcements:
+                ann_row = tk.Frame(recent_frame, bg="white")
+                ann_row.pack(fill="x", pady=5)
+                
+                priority_icon = "🔴" if priority == "high" else "🟢"
+                target_text = class_name if class_name else "Todas as turmas"
+                
+                tk.Label(ann_row, text=f"{priority_icon} {title}", font=("Arial", 11, "bold"),
+                        bg="white", fg="#2c3e50").pack(side="left")
+                tk.Label(ann_row, text=f"→ {target_text}", font=("Arial", 10),
+                        bg="white", fg="#7f8c8d").pack(side="left", padx=15)
+                tk.Label(ann_row, text=created_at, font=("Arial", 9),
+                        bg="white", fg="#95a5a6").pack(side="right")
+        else:
+            tk.Label(recent_frame, text="Nenhum aviso enviado ainda.", 
+                    font=("Arial", 11), bg="white", fg="#7f8c8d").pack(pady=10)
     
     def refresh_data(self):
         """Refresh secretary data when frame is shown."""
         if self.controller.current_user:
             self.welcome_label.config(
-                text=f"Painel da Secretaria - Bem-vinda, {self.controller.current_user['first_name']}!"
+                text=f"Painel de Gerenciamento - {self.controller.current_user['first_name']}"
             )
     
     def import_students_excel(self):
@@ -2512,7 +3324,7 @@ class SecretaryFrame(tk.Frame):
         # Create student registration window
         register_window = tk.Toplevel(self.controller)
         register_window.title("Registrar Estudante (Módulo C)")
-        register_window.geometry("400x500")
+        register_window.geometry("450x650")
         register_window.transient(self.controller)
         register_window.grab_set()
         
@@ -2540,16 +3352,48 @@ class SecretaryFrame(tk.Frame):
         email_entry = tk.Entry(register_window, font=("Arial", 11), width=30)
         email_entry.pack(pady=5)
         
+        # Class selection
+        tk.Label(register_window, text="Selecionar Turma:", font=("Arial", 11, "bold")).pack(pady=(10, 5))
+        
+        class_frame = tk.Frame(register_window)
+        class_frame.pack(pady=5)
+        
+        # Get available classes
+        conn = sqlite3.connect('academic_system.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, name FROM classes ORDER BY name')
+        available_classes = cursor.fetchall()
+        
+        class_var = tk.StringVar()
+        if available_classes:
+            class_var.set(str(available_classes[0][0]))  # Default to first class
+            for class_id, class_name in available_classes:
+                tk.Radiobutton(class_frame, text=class_name, variable=class_var,
+                             value=str(class_id), font=("Arial", 11)).pack(anchor='w', padx=20)
+        
         # Course selection
         tk.Label(register_window, text="Matricular em Disciplinas (opcional):").pack(pady=(10, 5))
         
-        # Create frame for course checkboxes
-        courses_frame = tk.Frame(register_window)
-        courses_frame.pack(pady=5)
+        # Create frame for course checkboxes with scrollbar
+        courses_container = tk.Frame(register_window)
+        courses_container.pack(pady=5, fill="both", expand=True)
+        
+        canvas = tk.Canvas(courses_container, height=150)
+        scrollbar = tk.Scrollbar(courses_container, orient="vertical", command=canvas.yview)
+        courses_frame = tk.Frame(canvas)
+        
+        courses_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=courses_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
         
         # Get available courses
-        conn = sqlite3.connect('academic_system.db')
-        cursor = conn.cursor()
         cursor.execute('SELECT id, name FROM courses ORDER BY name')
         available_courses = cursor.fetchall()
         conn.close()
@@ -2570,9 +3414,14 @@ class SecretaryFrame(tk.Frame):
             username = username_entry.get().strip()
             password = password_entry.get().strip()
             email = email_entry.get().strip()
+            selected_class = class_var.get()
             
             if not all([first_name, last_name, username, password, email]):
                 messagebox.showerror("Erro", "Por favor, preencha todos os campos.")
+                return
+            
+            if not selected_class:
+                messagebox.showerror("Erro", "Por favor, selecione uma turma.")
                 return
             
             try:
@@ -2580,17 +3429,37 @@ class SecretaryFrame(tk.Frame):
                 result = self.call_c_module_register(first_name, last_name, username, password, email)
                 
                 if result['success']:
+                    student_id = result['student_id']
+                    
+                    # Assign to class
+                    conn = sqlite3.connect('academic_system.db')
+                    cursor = conn.cursor()
+                    cursor.execute('''
+                        INSERT OR IGNORE INTO student_classes (student_id, class_id)
+                        VALUES (?, ?)
+                    ''', (student_id, int(selected_class)))
+                    conn.commit()
+                    conn.close()
+                    
                     # Enroll student in selected courses
                     selected_courses = [course_id for course_id, var in course_vars.items() if var.get()]
                     if selected_courses:
-                        self.enroll_student_in_courses(result['student_id'], selected_courses)
+                        self.enroll_student_in_courses(student_id, selected_courses)
+                    
+                    # Get class name
+                    conn = sqlite3.connect('academic_system.db')
+                    cursor = conn.cursor()
+                    cursor.execute('SELECT name FROM classes WHERE id = ?', (int(selected_class),))
+                    class_name = cursor.fetchone()[0]
+                    conn.close()
                     
                     course_info = f"\nMatriculado em {len(selected_courses)} disciplina(s)" if selected_courses else "\nSem matrículas em disciplinas"
                     
                     messagebox.showinfo("Sucesso", 
                                       f"Estudante '{first_name} {last_name}' registrado com sucesso via módulo C!\n"
                                       f"Usuário: {username}\n"
-                                      f"ID do Estudante: {result['student_id']}{course_info}")
+                                      f"Turma: {class_name}\n"
+                                      f"ID do Estudante: {student_id}{course_info}")
                     register_window.destroy()
                 else:
                     messagebox.showerror("Erro", f"Erro do Módulo C: {result['error']}")
